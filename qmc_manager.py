@@ -5,14 +5,31 @@ import h5py
 import pyqmc.dasktools
 
 
+def _make_wf_sj(mol, mf, jastrow, jastrow_kws):
+    if jastrow_kws is None:
+        jastrow_kws={}
+    wf1, to_opt1, freeze1 = pyqmc.default_slater(mol, mf)
+    wf2, to_opt2, freeze2 = jastrow(mol, **jastrow_kws)
+    wf = pyqmc.MultiplyWF(wf1, wf2)
+    to_opt = ["wf1" + x for x in to_opt1] + ["wf2" + x for x in to_opt2]
+    freeze = {}
+    for k in to_opt1:
+        freeze["wf1" + k] = freeze1[k]
+    for k in to_opt2:
+        freeze["wf2" + k] = freeze2[k]
+    return wf, to_opt, freeze
+
+
+
+
 class QMCManager:
-    def __init__(self, chkfile, client=None, npartitions=1):
+    def __init__(self, chkfile, client=None, npartitions=1, jastrow=pyqmc.default_jastrow, jastrow_kws=None):
         self.mol = pyscf.lib.chkfile.load_mol(chkfile)
         self.mol.output = None
         self.mol.stdout = None
         self.mf = pyscf.scf.RHF(self.mol)
         self.mf.__dict__.update(pyscf.scf.chkfile.load(chkfile, "scf"))
-        self.wf, self.to_opt, self.freeze = pyqmc.default_sj(self.mol, self.mf, ion_cusp=True)
+        self.wf, self.to_opt, self.freeze = _make_wf_sj(self.mol, self.mf, jastrow, jastrow_kws)
         self.client = client
         self.npartitions = npartitions
 

@@ -4,6 +4,7 @@ import numpy as np
 from cluster_setup import setup_cluster
 
 cluster_kws=dict(run_strategy = "local",ncore=2)
+jastrow_kws=dict(ion_cusp=True)
 
 rule GEOMETRY:
     output: "r{bond}/geometry.xyz"
@@ -28,7 +29,7 @@ rule OPTIMIZE:
     output: 'r{bond}/eigenstate0.chk'
     run: 
         client, cluster = setup_cluster(**cluster_kws)
-        mc_calc = qmc_manager.QMCManager(input.hf, client, cluster_kws['ncore'])
+        mc_calc = qmc_manager.QMCManager(input.hf, client, cluster_kws['ncore'], jastrow_kws=jastrow_kws)
         mc_calc.optimize(hdf_file=output[0], verbose=True)
         client.close()
 
@@ -37,7 +38,7 @@ rule DMC:
     output: "r{bond}/dmc{tstep}.chk"
     run:
         client, cluster = setup_cluster(**cluster_kws)
-        mc_calc = qmc_manager.QMCManager(input.hf, client, cluster_kws['ncore'])
+        mc_calc = qmc_manager.QMCManager(input.hf, client, cluster_kws['ncore'], jastrow_kws=jastrow_kws)
         mc_calc.read_wf(input.opt)
         mc_calc.dmc(hdf_file=output[0], tstep=float(wildcards.tstep), verbose=True)
         client.close()
