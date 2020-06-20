@@ -9,7 +9,7 @@ def _make_wf_sj(mol, mf, jastrow, jastrow_kws, slater_kws=None, mc=None):
     """
     mol and mf are pyscf objects
 
-    jastrow may be either a function that returns wf, to_opt, and freeze, or 
+    jastrow may be either a function that returns wf, to_opt, or 
     a list of such functions.
 
     jastrow_kws is a dictionary of keyword arguments for the jastrow function, or
@@ -26,23 +26,18 @@ def _make_wf_sj(mol, mf, jastrow, jastrow_kws, slater_kws=None, mc=None):
         jastrow_kws = [jastrow_kws]
 
     if mc is None:
-        wf1, to_opt1, freeze1 = pyqmc.default_slater(mol, mf, **slater_kws)
+        wf1, to_opt1 = pyqmc.default_slater(mol, mf, **slater_kws)
     else:
-        wf1, to_opt1, freeze1 = pyqmc.default_multislater(mol, mf, mc, **slater_kws)
+        wf1, to_opt1 = pyqmc.default_multislater(mol, mf, mc, **slater_kws)
 
     pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
     wfs = [p[0] for p in pack]
     to_opts = [p[1] for p in pack]
-    freezes = [p[2] for p in pack]
     wf = pyqmc.MultiplyWF(wf1, *wfs)
-    to_opt = ["wf1" + x for x in to_opt1]
-    for i, opt in enumerate(to_opts):
-        to_opt += [f"wf{i+2}" + o for o in opt]
-
-    freeze = {"wf1" + k: v for k, v in freeze1.items()}
-    for i, freeze2 in enumerate(freezes):
-        freeze.update({f"wf{i+2}" + k: v for k, v in freeze2.items()})
-    return wf, to_opt, freeze
+    to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
+    for i, to_opt2 in enumerate(to_opts):
+        to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+    return wf, to_opt
 
 
 def _recover_pyscf(chkfile, casfile=None, root=0):
@@ -73,7 +68,7 @@ class QMCManager:
         make_wf_sj = _make_wf_sj
     ):
         self.mol, self.mf, self.mc = recover_pyscf(chkfile, casfile)
-        self.wf, self.to_opt, self.freeze = make_wf_sj(
+        self.wf, self.to_opt = make_wf_sj(
             self.mol, self.mf, jastrow, jastrow_kws, slater_kws=slater_kws, mc=self.mc
         )
         self.client = client
@@ -89,7 +84,7 @@ class QMCManager:
     def optimize(self, nconfig=1000, **kwargs):
         configs = pyqmc.initial_guess(self.mol, nconfig)
         acc = pyqmc.gradient_generator(
-            self.mol, self.wf, to_opt=self.to_opt, freeze=self.freeze
+            self.mol, self.wf, to_opt=self.to_opt
         )
         if self.client is None:
             pyqmc.line_minimization(self.wf, configs, acc, **kwargs)
@@ -101,7 +96,7 @@ class QMCManager:
                 **kwargs,
                 client=self.client,
                 lmoptions={"npartitions": self.npartitions},
-                vmcoptions={"npartitions": self.npartitions},
+                vmcoptions={"npartitions": self.npartitions, 'nblocks':5,'nsteps_per_block':20},
             )
 
     def dmc(self, nconfig=1000, **kwargs):
